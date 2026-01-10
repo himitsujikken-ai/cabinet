@@ -91,7 +91,14 @@ const Typewriter = ({ text, onComplete }: { text: string; onComplete?: () => voi
     return () => clearInterval(intervalId);
   }, [text]);
 
-  return <span>{displayedText}</span>;
+  return (
+    <span className="whitespace-pre-wrap">
+      {displayedText.split(/(\*\*.*?\*\*)/).map((part, i) =>
+        part.startsWith('**') && part.endsWith('**') ?
+          <strong key={i} className="text-[#a38e5e]">{part.slice(2, -2)}</strong> : part
+      )}
+    </span>
+  );
 };
 
 export default function Home() {
@@ -103,6 +110,10 @@ export default function Home() {
   const [typingIndex, setTypingIndex] = useState<number>(-1);
   const [showSageList, setShowSageList] = useState(false);
   const [showTeamSelector, setShowTeamSelector] = useState(false);
+
+  // ★Mobile Menu State
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentMembers, setCurrentMembers] = useState<string[]>([]);
 
@@ -144,18 +155,15 @@ export default function Home() {
   const sendMessage = async (text: string, isSystemCommand = false, membersOverride?: string[], birthDateOverride?: string) => {
     if ((!text.trim() && !isSystemCommand) || isLoading) return;
 
-    // 日付検出 (8桁、ハイフン、スラッシュ、ドット、1桁月日対応)
     const datePattern = /(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/;
     const match = text.match(datePattern);
 
-    // 優先順位: Override指定 > メッセージ内の日付検出 > 現在のState
     let tempBirthDate = birthDateOverride !== undefined ? birthDateOverride : birthDate;
 
-    // メッセージが「日付のみ」の場合はStateを更新する
     if (match && text.length < 20) {
       const year = match[1];
-      const month = match[2].padStart(2, '0'); // 0埋め
-      const day = match[3].padStart(2, '0');   // 0埋め
+      const month = match[2].padStart(2, '0');
+      const day = match[3].padStart(2, '0');
       const formattedDate = `${year}-${month}-${day}`;
 
       setBirthDate(formattedDate);
@@ -182,7 +190,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          birthDate: tempBirthDate, // ★確定した日付を送信
+          birthDate: tempBirthDate,
           history: messages,
           currentHour: currentHour,
           currentMembers: membersOverride !== undefined ? membersOverride : currentMembers
@@ -248,6 +256,9 @@ export default function Home() {
   };
 
   const handleMenuAction = (action: string) => {
+    // モバイルメニューを閉じる
+    setShowMobileMenu(false);
+
     switch (action) {
       case "LIST": setShowSageList(true); break;
       case "TEAM": setShowTeamSelector(true); break;
@@ -259,7 +270,6 @@ export default function Home() {
           const inputDate = prompt("Grand Compassによる運命再診断には、正確な生年月日が必要です。\n入力例: 1990-01-01");
           if (inputDate) {
             setBirthDate(inputDate);
-            // Systemコマンドでも override して確実に送る
             sendMessage(`【システム指令】Grand Compass起動。運勢を再診断し、最適なメンバーを再招集してください。(新規設定生年月日: ${inputDate})`, true, undefined, inputDate);
           }
         } else {
@@ -311,7 +321,6 @@ export default function Home() {
     "都道府県": ["都道府県"]
   };
 
-  // --- 1. エントランス画面 ---
   if (!isSetupComplete) {
     const hasHistory = messages.length > 0;
     return (
@@ -366,7 +375,6 @@ export default function Home() {
                 }
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
-                // 第4引数に birthDate を渡して確実に日付を送る
                 setTimeout(() => sendMessage("【システム指令】チェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法を案内せよ。", true, [], birthDate), 500);
               }}
               className="px-10 py-4 border border-[#ddd] text-[#333] tracking-[0.2em] text-xs hover:border-[#a38e5e] hover:text-[#a38e5e] transition-all duration-700 uppercase font-[family-name:var(--font-cinzel)]"
@@ -381,13 +389,11 @@ export default function Home() {
                   setMessages([]);
                   setCurrentMembers([]);
                 }
-                // ★修正: StateだけでなくLocalStorageも即座に消去する
                 setBirthDate("");
                 localStorage.removeItem("cabinet_birthdate");
 
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
-                // 第4引数に "" (空文字) を渡して、確実にゲスト扱いにさせる
                 setTimeout(() => sendMessage("【システム指令】ゲストチェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法（サイドバー/ハンバーガーメニュー）を案内せよ。", true, [], ""), 500);
               }}
               className="mt-4 text-[10px] text-[#999] hover:text-[#a38e5e] tracking-[0.1em] border-b border-transparent hover:border-[#a38e5e] pb-0.5 transition-colors font-sans"
@@ -400,10 +406,9 @@ export default function Home() {
     );
   }
 
-  // --- 2. メインチャット画面 ---
   return (
     <div className="flex h-screen bg-[#fff] text-[#1f1f1f] font-sans overflow-hidden">
-      {/* Sidebar */}
+      {/* Desktop Sidebar (そのままでOK) */}
       <aside className="w-64 bg-[#f9fafb] border-r border-[#eee] flex flex-col hidden md:flex">
         <div className="p-6 border-b border-[#eee]">
           <button onClick={handleGoToTop} className="text-left group w-full">
@@ -429,19 +434,47 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative bg-white">
-        {/* Mobile Header */}
-        <header className="md:hidden p-4 border-b border-[#eee] bg-white flex justify-between items-center sticky top-0 z-10">
+
+        {/* ★Mobile Header (Modified) */}
+        <header className="md:hidden p-4 border-b border-[#eee] bg-white flex justify-between items-center sticky top-0 z-20">
           <button onClick={handleGoToTop}>
-            <span className="font-[family-name:var(--font-cinzel)] font-bold hover:text-[#a38e5e] transition-colors">THE CABINET</span>
+            <span className="font-[family-name:var(--font-cinzel)] font-bold text-lg hover:text-[#a38e5e] transition-colors">THE CABINET</span>
           </button>
-          <div className="flex gap-2">
-            <button onClick={() => handleMenuAction("TEAM")} className="p-2 bg-[#f5f5f5] rounded text-lg">⚡</button>
-            <button onClick={() => handleMenuAction("LIST")} className="p-2 bg-[#f5f5f5] rounded text-lg">📜</button>
-            <button onClick={() => handleMenuAction("RESET")} className="p-2 bg-[#f5f5f5] rounded text-lg">🗑️</button>
-          </div>
+          {/* ハンバーガーメニューボタン */}
+          <button onClick={() => setShowMobileMenu(true)} className="p-2 text-2xl text-[#333]">
+            ☰
+          </button>
         </header>
 
-        {/* Chat Area */}
+        {/* ★Mobile Menu Overlay (New) */}
+        {showMobileMenu && (
+          <div className="fixed inset-0 z-50 bg-[#fafaf8] flex flex-col animate-fade-in font-sans">
+            <div className="p-4 border-b border-[#eee] flex justify-between items-center bg-white">
+              <h2 className="font-[family-name:var(--font-cinzel)] font-bold text-xl text-[#333]">MENU</h2>
+              <button onClick={() => setShowMobileMenu(false)} className="text-3xl text-[#888] hover:text-[#333]">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="space-y-3">
+                <h3 className="text-xs text-[#a38e5e] tracking-widest border-b border-[#a38e5e]/30 pb-1 mb-2">ACTIONS</h3>
+                <MenuButton icon="⚡" label="チーム生成 (3名選抜)" onClick={() => handleMenuAction("TEAM")} />
+                <MenuButton icon="📜" label="賢人一覧" onClick={() => handleMenuAction("LIST")} />
+                <MenuButton icon="🔄" label="メンバー交代" onClick={() => handleMenuAction("CHANGE")} />
+                <MenuButton icon="🧭" label="Grand Compass" onClick={() => handleMenuAction("COMPASS")} />
+                <MenuButton icon="🚪" label="介入を呼び込む" onClick={() => handleMenuAction("INTERVENE")} />
+              </div>
+              <div className="space-y-3 pt-4">
+                <h3 className="text-xs text-[#a38e5e] tracking-widest border-b border-[#a38e5e]/30 pb-1 mb-2">SYSTEM</h3>
+                <MenuButton icon="🗑️" label="記憶の消去 (Reset)" onClick={() => handleMenuAction("RESET")} />
+                <MenuButton icon="🏛️" label="LEGACY (賢人化)" onClick={() => handleMenuAction("LEGACY")} />
+                <MenuButton icon="💎" label="スペシャルコンテンツ" onClick={() => handleMenuAction("SPECIAL")} />
+              </div>
+              <div className="pt-8 text-center text-xs text-[#ccc] font-[family-name:var(--font-cinzel)]">
+                COORD: {birthDate ? birthDate : "GUEST"}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scroll-smooth">
           {messages.map((msg, index) => {
             if (index > typingIndex) return null;
@@ -458,7 +491,7 @@ export default function Home() {
                   <div className="flex flex-col gap-1">
                     {!isUser && (
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#333] text-sm font-sans">{msg.speaker}</span>
+                        <span className="font-bold text-[#1e40af] text-base font-sans tracking-wide">{msg.speaker}</span>
                         <span className="text-xs text-[#888] font-sans">{roleText}</span>
                         {isBuddha && (
                           <button onClick={() => playFrequency(963)} className="ml-2 px-2 py-0.5 bg-[#E6E6FA] text-[#4B0082] text-[10px] rounded-full hover:bg-[#D8BFD8] transition-colors flex items-center gap-1">
@@ -468,16 +501,14 @@ export default function Home() {
                       </div>
                     )}
                     <div className={`p-5 rounded-2xl text-[15px] leading-relaxed shadow-sm font-sans ${isUser ? "bg-[#111] text-white rounded-tr-none" : getSpeakerStyle(msg.speaker) + " rounded-tl-none"}`}>
-                      {/* ★グラフ表示ロジック修正: birthDateが空文字でないことを厳密にチェック */}
                       {(!isUser && msg.content.includes("[CYCLE_GRAPH]") && birthDate && birthDate.length > 4) && (
                         <div className="mb-4">
                           <FateCycleDashboard data={AstroLogic.generateCycleData(birthDate)} />
                         </div>
                       )}
 
-                      {/* テキスト表示 */}
                       {isUser || index < typingIndex ? (
-                        msg.content.replace("[CYCLE_GRAPH]", "")
+                        <Typewriter text={msg.content.replace("[CYCLE_GRAPH]", "")} />
                       ) : (
                         <Typewriter text={msg.content.replace("[CYCLE_GRAPH]", "")} onComplete={() => setTypingIndex(prev => prev + 1)} />
                       )}
@@ -496,7 +527,6 @@ export default function Home() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
         <div className="p-4 md:p-6 bg-white border-t border-[#eee]">
           <form onSubmit={handleSubmit} className="relative max-w-4xl mx-auto">
             <input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading || (messages.length > 0 && typingIndex < messages.length)} placeholder="ここに議題を入力... (YYYY-MM-DD で生年月日更新)" className="w-full bg-[#f8f9fa] border border-[#ddd] text-[#333] px-6 py-4 rounded-full focus:outline-none focus:border-[#a38e5e] focus:ring-1 focus:ring-[#a38e5e] transition-all shadow-inner disabled:opacity-50 font-sans" />
