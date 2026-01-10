@@ -58,23 +58,18 @@ export async function POST(req: Request) {
         }
 
         // --- 2. 日付入力の検知ロジック ---
-        // 8桁(19900101)、またはハイフン/スラッシュ/ドット区切りの日付を検出
         const datePattern = /(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/;
         const dateMatch = message.match(datePattern);
-
-        // メッセージがほぼ日付のみで構成されているか判定（誤爆防止）
         const isDateInput = dateMatch && message.length < 20;
 
         // --- 3. 運命情報の更新 ---
         let currentBirthDate = birthDate;
         if (isDateInput) {
-            // メッセージから日付を抽出して上書き (YYYY-MM-DD形式)
             const y = dateMatch[1];
             const m = dateMatch[2].padStart(2, '0');
             const d = dateMatch[3].padStart(2, '0');
             currentBirthDate = `${y}-${m}-${d}`;
         } else {
-            // システムコマンドからの抽出
             const cmdMatch = message.match(/新規設定生年月日:\s*([\d-]+)/);
             if (cmdMatch) currentBirthDate = cmdMatch[1];
         }
@@ -99,13 +94,10 @@ export async function POST(req: Request) {
         const isCheckinChoice = message.includes("メンバーを自分で選ぶか");
         const isSummonCommand = message.includes("招集命令") || message.includes("緊急招集") || message.includes("呼んで") || message.includes("招集");
 
-        // クライアントからの名簿引き継ぎ
-        // (Compass, Checkin, Summon, DateInput の時は引き継がない＝リフレッシュ)
         if (!isGrandCompass && !isCheckinChoice && !isSummonCommand && !isDateInput && currentMembers && Array.isArray(currentMembers) && currentMembers.length > 0) {
             activeTeam = currentMembers.map(name => UPDATED_DB.find(s => s.name === name)).filter(s => s !== undefined) as Sage[];
         }
 
-        // メンバー自動選抜（まだ誰もいない時）
         if (activeTeam.length === 0 && !isSummonCommand) {
             if (isGrandCompass || !isCheckinChoice) {
                 if (!isCheckinChoice) {
@@ -118,7 +110,9 @@ export async function POST(req: Request) {
         // --- 6. プロンプト生成 (Roster) ---
         const rosterText = activeTeam.map(s => {
             let desc = `- ${s.name} (${s.role}): ${s.philosophy} 口調:${s.tone}`;
-            if (s.category === "都道府県") desc += `\n   【重要：民話OS搭載】...（略）`;
+            if (s.category === "都道府県") {
+                desc += `\n   【重要：土地神OS搭載】あなたは単なる方言キャラクターではない。${s.name}の「擬人化された土地神」である。\n   発言には必ず、その土地固有の「民話・伝承」「地形・気候による影響」「歴史的背景」「県民性（気質）」を論理的根拠として組み込め。\n   単に方言で喋るだけでなく、その土地の風土に根ざした深い知恵と哲学でアドバイスせよ。`;
+            }
             return desc;
         }).join("\n\n");
 
@@ -132,7 +126,7 @@ export async function POST(req: Request) {
         // ==========================================
 
         if (isDateInput) {
-            // ★日付更新時: ナビゲーターがグラフ付きで分析
+            // 日付更新時
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長、および時読みナビゲーターです。
 ユーザーから「新しい生年月日（${currentBirthDate}）」が提示されました。
@@ -151,7 +145,7 @@ export async function POST(req: Request) {
 `;
         }
         else if (isSummonCommand) {
-            // ★招集命令: 議長が全リストから選抜
+            // 招集命令
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長です。ユーザーの希望する賢人を招集してください。
 【最重要任務】
@@ -164,9 +158,9 @@ ${fullDirectory}
 `;
         }
         else if (isCheckinChoice) {
-            // ★チェックイン時
+            // チェックイン時
             if (currentBirthDate) {
-                // 生年月日あり: グラフ表示＆詳細分析
+                // 生年月日あり
                 SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長、および時読みナビゲーターです。
 オーナーがチェックインしました。
@@ -176,7 +170,7 @@ ${fullDirectory}
 【出力】JSON配列形式。
 `;
             } else {
-                // ゲスト(生年月日なし): グラフなし・テキストのみで雰囲気伝達
+                // ★【修正箇所】ゲスト(生年月日なし)用プロンプトの完全復元
                 SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長、および時読みナビゲーターです。
 **ゲストユーザー（生年月日データなし）**がチェックインしました。
@@ -195,12 +189,17 @@ ${fullDirectory}
      - **ゲストによる指名**: サイドバー（メニュー）より、お好きな賢人を招集する。
    - 最後に「どちらになさいますか？」と添えてください。
 
-【出力】JSON配列形式。
+【出力フォーマット】
+JSON配列形式のみ。**日本語のみ。**
+[
+  { "speaker": "時読みナビゲーター", "content": "ようこそゲスト様。現在は昼下がりの活動的な時間帯であり、議論には最適です。生年月日があれば運命分析も可能ですが、まずはこの空気感の中で対話を楽しみましょう。" },
+  { "speaker": "知の宰相 (AI議長)", "content": "ゲスト様、ようこそ。本日の賢人選抜について、ご意向をお聞かせください。\n\n・**議長による直感選抜**\n・**ゲストによる指名**\n\nどちらになさいますか？" }
+]
 `;
             }
         }
         else if (isGrandCompassExisting) {
-            // ★設定済みGrand Compass
+            // 設定済みGrand Compass
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長です。
 既に分析済みの状態でGrand Compassが押されました。
@@ -211,7 +210,7 @@ ${fullDirectory}
 `;
         }
         else if (activeTeam.length > 0 && !currentMembers?.length && isGrandCompass) {
-            // ★新規Grand Compass
+            // 新規Grand Compass
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長です。
 Grand Compassにより、本日の賢人選抜を行いました。
@@ -223,7 +222,7 @@ ${userProfile}
 `;
         }
         else if (activeTeam.length > 0 && !currentMembers?.length) {
-            // ★通常の自動選抜
+            // 通常の自動選抜
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」のAI議長です。
 本日の賢人選抜を行いました。
@@ -235,7 +234,7 @@ ${userProfile}
 `;
         }
         else {
-            // ★【重要】標準会話モード（ここを修正）
+            // 標準会話モード
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」の賢人会議シミュレーターです。
 現在時刻: ${planetaryContext}
@@ -251,6 +250,7 @@ ${rosterText}
 3. **賢人の挙動**:
    - メンバー同士で活発に議論せよ。
    - 長文・感情表現（🔥✨）を徹底。
+   - 都道府県賢人は、方言だけでなくその土地の「民話・風習・歴史」を引用して語れ。
 
 【出力】JSON配列形式。
 `;

@@ -141,11 +141,10 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingIndex]);
 
-  // ★修正: 第4引数 birthDateOverride を追加。ボタン操作などで強制的に日付（または空）を指定可能にする。
   const sendMessage = async (text: string, isSystemCommand = false, membersOverride?: string[], birthDateOverride?: string) => {
     if ((!text.trim() && !isSystemCommand) || isLoading) return;
 
-    // ★修正: ドット区切りや1桁月日(1977.8.22)にも対応する強力な正規表現
+    // 日付検出 (8桁、ハイフン、スラッシュ、ドット、1桁月日対応)
     const datePattern = /(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/;
     const match = text.match(datePattern);
 
@@ -367,7 +366,7 @@ export default function Home() {
                 }
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
-                // ★修正: 第4引数に birthDate を渡して確実に日付を送る
+                // 第4引数に birthDate を渡して確実に日付を送る
                 setTimeout(() => sendMessage("【システム指令】チェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法を案内せよ。", true, [], birthDate), 500);
               }}
               className="px-10 py-4 border border-[#ddd] text-[#333] tracking-[0.2em] text-xs hover:border-[#a38e5e] hover:text-[#a38e5e] transition-all duration-700 uppercase font-[family-name:var(--font-cinzel)]"
@@ -382,10 +381,13 @@ export default function Home() {
                   setMessages([]);
                   setCurrentMembers([]);
                 }
+                // ★修正: StateだけでなくLocalStorageも即座に消去する
                 setBirthDate("");
+                localStorage.removeItem("cabinet_birthdate");
+
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
-                // ★修正: 第4引数に "" (空文字) を渡して、確実にゲスト扱いにさせる
+                // 第4引数に "" (空文字) を渡して、確実にゲスト扱いにさせる
                 setTimeout(() => sendMessage("【システム指令】ゲストチェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法（サイドバー/ハンバーガーメニュー）を案内せよ。", true, [], ""), 500);
               }}
               className="mt-4 text-[10px] text-[#999] hover:text-[#a38e5e] tracking-[0.1em] border-b border-transparent hover:border-[#a38e5e] pb-0.5 transition-colors font-sans"
@@ -466,8 +468,8 @@ export default function Home() {
                       </div>
                     )}
                     <div className={`p-5 rounded-2xl text-[15px] leading-relaxed shadow-sm font-sans ${isUser ? "bg-[#111] text-white rounded-tr-none" : getSpeakerStyle(msg.speaker) + " rounded-tl-none"}`}>
-                      {/* ★グラフ表示ロジック: birthDateが存在する場合のみ表示 */}
-                      {(!isUser && msg.content.includes("[CYCLE_GRAPH]") && birthDate) && (
+                      {/* ★グラフ表示ロジック修正: birthDateが空文字でないことを厳密にチェック */}
+                      {(!isUser && msg.content.includes("[CYCLE_GRAPH]") && birthDate && birthDate.length > 4) && (
                         <div className="mb-4">
                           <FateCycleDashboard data={AstroLogic.generateCycleData(birthDate)} />
                         </div>
