@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { SAGE_DB, Sage } from "@/utils/sages";
-import FateCycleDashboard from "@/components/FateCycleDashboard";
 import { AstroLogic } from "@/utils/astro";
+import FateCycleDashboard from "@/components/FateCycleDashboard";
 
 type Message = {
   role: "user" | "assistant";
@@ -53,7 +53,6 @@ const playFrequency = (hz: number) => {
 
 const Avatar = ({ name }: { name: string }) => {
   let hash = 0;
-  // 安全装置: nameが空の場合は「?」にする
   const safeName = name || "?";
   for (let i = 0; i < safeName.length; i++) hash = safeName.charCodeAt(i) + ((hash << 5) - hash);
   const colors = [
@@ -71,7 +70,6 @@ const Avatar = ({ name }: { name: string }) => {
   return <div className={`w-10 h-10 rounded-full ${colorClass} flex items-center justify-center text-white font-bold shadow-sm text-lg`}>{initial}</div>;
 };
 
-// ★修正: Typewriterの安全化（textがundefinedでも落ちないようにする）
 const Typewriter = ({ text, onComplete }: { text: string; onComplete?: () => void }) => {
   const [displayedText, setDisplayedText] = useState("");
   const indexRef = useRef(0);
@@ -79,10 +77,7 @@ const Typewriter = ({ text, onComplete }: { text: string; onComplete?: () => voi
   useEffect(() => {
     indexRef.current = 0;
     setDisplayedText("");
-
-    // 安全装置: textが空なら空文字として扱う
     const safeText = text || "";
-
     const intervalId = setInterval(() => {
       if (indexRef.current >= safeText.length) {
         clearInterval(intervalId);
@@ -146,8 +141,28 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingIndex]);
 
-  const sendMessage = async (text: string, isSystemCommand = false, membersOverride?: string[]) => {
+  // ★修正: 第4引数 birthDateOverride を追加。ボタン操作などで強制的に日付（または空）を指定可能にする。
+  const sendMessage = async (text: string, isSystemCommand = false, membersOverride?: string[], birthDateOverride?: string) => {
     if ((!text.trim() && !isSystemCommand) || isLoading) return;
+
+    // ★修正: ドット区切りや1桁月日(1977.8.22)にも対応する強力な正規表現
+    const datePattern = /(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/;
+    const match = text.match(datePattern);
+
+    // 優先順位: Override指定 > メッセージ内の日付検出 > 現在のState
+    let tempBirthDate = birthDateOverride !== undefined ? birthDateOverride : birthDate;
+
+    // メッセージが「日付のみ」の場合はStateを更新する
+    if (match && text.length < 20) {
+      const year = match[1];
+      const month = match[2].padStart(2, '0'); // 0埋め
+      const day = match[3].padStart(2, '0');   // 0埋め
+      const formattedDate = `${year}-${month}-${day}`;
+
+      setBirthDate(formattedDate);
+      tempBirthDate = formattedDate;
+      localStorage.setItem("cabinet_birthdate", formattedDate);
+    }
 
     if (!isSystemCommand) {
       const userMessage: Message = { role: "user", content: text };
@@ -168,7 +183,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          birthDate,
+          birthDate: tempBirthDate, // ★確定した日付を送信
           history: messages,
           currentHour: currentHour,
           currentMembers: membersOverride !== undefined ? membersOverride : currentMembers
@@ -186,7 +201,6 @@ export default function Home() {
       const newMessages = script.map((item: any) => ({
         role: "assistant",
         speaker: item.speaker,
-        // ★修正: contentがundefinedでも空文字を入れて落ちないようにする
         content: item.content || "",
       }));
 
@@ -240,20 +254,20 @@ export default function Home() {
       case "TEAM": setShowTeamSelector(true); break;
       case "CHANGE": sendMessage("議論の流れを変えたいわ。現在のメンバーを解散し、全く違う視点を持つメンバーに入れ替えて。", false); break;
       case "LOG": alert("現在の画面を上にスクロールすると、過去の対話を確認できます。"); break;
+
       case "COMPASS":
         if (!birthDate) {
-          // 生年月日がない場合（ゲスト）：入力を求めてから通常起動
           const inputDate = prompt("Grand Compassによる運命再診断には、正確な生年月日が必要です。\n入力例: 1990-01-01");
           if (inputDate) {
             setBirthDate(inputDate);
-            sendMessage(`【システム指令】Grand Compass起動。運勢を再診断し、最適なメンバーを再招集してください。(新規設定生年月日: ${inputDate})`, true);
+            // Systemコマンドでも override して確実に送る
+            sendMessage(`【システム指令】Grand Compass起動。運勢を再診断し、最適なメンバーを再招集してください。(新規設定生年月日: ${inputDate})`, true, undefined, inputDate);
           }
         } else {
-          // 生年月日がある場合（設定済み）：仕様案内とリシャッフルを指示
-          // システムコマンドとして送信（第2引数true）
           sendMessage("【システム指令】Grand Compass再起動（設定済み）。現在の生年月日で既に分析済みであり、その座標で稼働中であることをオーナーに伝えてください。もし生年月日を変更して再診断したい場合は、一度「記憶の消去(Reset)」を行う必要があると案内してください。その上で、現在の運命座標に基づいてメンバーを再選抜（リシャッフル）してください。", true);
         }
         break;
+
       case "INTERVENE": sendMessage("議論が膠着しているわ。新しい視点を持つ賢人を1名、介入（ドアノック）させて。"); break;
       case "RESET": clearHistory(); break;
       case "LEGACY": alert("LEGACY Project (賢人化)\n\n現在、機能調整中です。\n(Coming Soon...)"); break;
@@ -353,8 +367,8 @@ export default function Home() {
                 }
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
-                // システムコマンド送信（第2引数trueで履歴に残さない）
-                setTimeout(() => sendMessage("【システム指令】チェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法（サイドバー/ハンバーガーメニューから賢人一覧やチーム生成を選択できること）を案内せよ。", true, []), 500);
+                // ★修正: 第4引数に birthDate を渡して確実に日付を送る
+                setTimeout(() => sendMessage("【システム指令】チェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法を案内せよ。", true, [], birthDate), 500);
               }}
               className="px-10 py-4 border border-[#ddd] text-[#333] tracking-[0.2em] text-xs hover:border-[#a38e5e] hover:text-[#a38e5e] transition-all duration-700 uppercase font-[family-name:var(--font-cinzel)]"
             >
@@ -371,8 +385,8 @@ export default function Home() {
                 setBirthDate("");
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
-                // システムコマンド送信（第2引数trueで履歴に残さない）
-                setTimeout(() => sendMessage("【システム指令】ゲストチェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法（サイドバー/ハンバーガーメニュー）を案内せよ。", true, []), 500);
+                // ★修正: 第4引数に "" (空文字) を渡して、確実にゲスト扱いにさせる
+                setTimeout(() => sendMessage("【システム指令】ゲストチェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法（サイドバー/ハンバーガーメニュー）を案内せよ。", true, [], ""), 500);
               }}
               className="mt-4 text-[10px] text-[#999] hover:text-[#a38e5e] tracking-[0.1em] border-b border-transparent hover:border-[#a38e5e] pb-0.5 transition-colors font-sans"
             >
@@ -452,15 +466,14 @@ export default function Home() {
                       </div>
                     )}
                     <div className={`p-5 rounded-2xl text-[15px] leading-relaxed shadow-sm font-sans ${isUser ? "bg-[#111] text-white rounded-tr-none" : getSpeakerStyle(msg.speaker) + " rounded-tl-none"}`}>
-                      {/* ★グラフ表示ロジック追加 */}
+                      {/* ★グラフ表示ロジック: birthDateが存在する場合のみ表示 */}
                       {(!isUser && msg.content.includes("[CYCLE_GRAPH]") && birthDate) && (
                         <div className="mb-4">
-                          {/* birthDateを使ってリアルタイムにデータを生成して渡す */}
                           <FateCycleDashboard data={AstroLogic.generateCycleData(birthDate)} />
                         </div>
                       )}
 
-                      {/* テキスト表示（タグは削除して表示） */}
+                      {/* テキスト表示 */}
                       {isUser || index < typingIndex ? (
                         msg.content.replace("[CYCLE_GRAPH]", "")
                       ) : (
@@ -484,7 +497,7 @@ export default function Home() {
         {/* Input Area */}
         <div className="p-4 md:p-6 bg-white border-t border-[#eee]">
           <form onSubmit={handleSubmit} className="relative max-w-4xl mx-auto">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading || (messages.length > 0 && typingIndex < messages.length)} placeholder="ここに議題を入力..." className="w-full bg-[#f8f9fa] border border-[#ddd] text-[#333] px-6 py-4 rounded-full focus:outline-none focus:border-[#a38e5e] focus:ring-1 focus:ring-[#a38e5e] transition-all shadow-inner disabled:opacity-50 font-sans" />
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading || (messages.length > 0 && typingIndex < messages.length)} placeholder="ここに議題を入力... (YYYY-MM-DD で生年月日更新)" className="w-full bg-[#f8f9fa] border border-[#ddd] text-[#333] px-6 py-4 rounded-full focus:outline-none focus:border-[#a38e5e] focus:ring-1 focus:ring-[#a38e5e] transition-all shadow-inner disabled:opacity-50 font-sans" />
             <button type="submit" disabled={!input || isLoading} className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-[#333] text-white rounded-full hover:bg-[#000] disabled:bg-[#ccc] transition-all">
               <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
             </button>
