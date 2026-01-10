@@ -1,16 +1,17 @@
-import { MY_GEM_SOURCE } from "./custom_knowledge";
+import { PREFECTURE_SAGES } from "./prefectures";
+import { NEW_CHARACTERS } from "./characters";
 
 export type Sage = {
     id: string;
     name: string;
-    nameEn: string;
+    nameEn?: string;
     role: string;
     philosophy: string;
     tone: string;
-    category: "Modern" | "Spirit" | "Women" | "Strategy" | "Secret" | "Legend" | "System"; // ★Systemカテゴリ追加
-    knowledge?: string;
-    layer?: string; // ★追加: システム階層
-    frequency?: string; // ★追加: 音響周波数
+    category: "システム・管理者" | "現代・内閣" | "哲学・革新" | "戦略・歴史" | "都道府県" | string; // ★カテゴリ拡張
+    knowledge?: boolean | string;
+    frequency?: number | string;
+    layer?: string;
 };
 
 export const SAGE_DB: Sage[] = [
@@ -62,7 +63,7 @@ export const SAGE_DB: Sage[] = [
     // ★変更: アイデンティティ・キュレーター
     {
         id: "designer",
-        name: "アイデンティティ・キュレーター", // 旧: 属性デザイナー
+        name: "アイデンティティ・キング", // 旧: 属性デザイナー, アイデンティティ・キュレーター
         nameEn: "Identity Curator",
         role: "Only1・本質キュレーション",
         philosophy: "膨大な資質の中から、その人だけの「核（コア）」を選び抜き、洗練された形で提示・展示する。",
@@ -73,7 +74,7 @@ export const SAGE_DB: Sage[] = [
     // ★変更: マインド・アルケミスト
     {
         id: "mr_potential",
-        name: "マインド・アルケミスト", // 旧: Mr.ポテンシャル解放
+        name: "ポテンシャルジェネレーター", // 旧: Mr.ポテンシャル解放, マインド・アルケミスト
         nameEn: "Mind Alchemist",
         role: "チーム論・心理錬金術",
         philosophy: "チームや個人の熱量、感情のエネルギーを、黄金（成果）に変える変容のプロセスを重視する。",
@@ -324,5 +325,10 @@ export const SAGE_DB: Sage[] = [
         philosophy: "組織の団結力、興亡のサイクル、都市と地方。",
         tone: "歴史俯瞰。「〜という法則がある」「組織は3代で衰退する」",
         category: "Strategy"
-    }
+    },
+    // ★最後に「都道府県」と「新キャラクター」を展開して追加
+    // @ts-ignore
+    ...PREFECTURE_SAGES,
+    // @ts-ignore
+    ...NEW_CHARACTERS
 ];

@@ -69,5 +69,46 @@ export const AstroLogic = {
         };
 
         return { index: t, name: dict[t] || "不明" };
+    },
+
+    // ★新規追加: グラフ用データを生成する関数
+    generateCycleData: (birthDate: string) => {
+        const today = new Date();
+        const birth = new Date(birthDate);
+
+        // 生年月日が無効な場合はデフォルト値を返す
+        if (isNaN(birth.getTime())) {
+            return {
+                elements: { wood: 50, fire: 50, earth: 50, metal: 50, water: 50 },
+                planets: { jupiter: 0, saturn: 0, mars: 0, venus: 0, moon: 0 },
+                logId: 0
+            };
+        }
+
+        const diffTime = Math.abs(today.getTime() - birth.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // 1. 五行バランス (擬似ロジック: 生年月日からハッシュ生成して変動させる)
+        // ※本来は四柱推命などで精密計算しますが、ここでは演出用に変動させます
+        const seed = birth.getDate() + birth.getMonth();
+        const wood = (seed * 7) % 100;
+        const fire = (seed * 3 + 20) % 100;
+        const earth = (seed * 5 + 10) % 100;
+        const metal = (seed * 2 + 30) % 100;
+        const water = (100 - (wood + fire + earth + metal) / 4); // バランス調整
+
+        // 2. 惑星サイクル (公転周期に基づく進行度 %)
+        // 木星: 4333日, 土星: 10759日, 火星: 687日, 金星: 225日, 月: 29.5日
+        const jupiter = (diffDays % 4333) / 4333 * 100;
+        const saturn = (diffDays % 10759) / 10759 * 100;
+        const mars = (diffDays % 687) / 687 * 100;
+        const venus = (diffDays % 225) / 225 * 100;
+        const moon = (diffDays % 29.5) / 29.5 * 100;
+
+        return {
+            elements: { wood, fire, earth, metal, water },
+            planets: { jupiter, saturn, mars, venus, moon },
+            logId: Math.floor(Math.random() * 900000) + 100000 // PID演出用
+        };
     }
 };
