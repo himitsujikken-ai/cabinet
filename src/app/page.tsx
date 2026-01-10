@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { SAGE_DB, Sage } from "@/utils/sages";
 import { AstroLogic } from "@/utils/astro";
 import FateCycleDashboard from "@/components/FateCycleDashboard";
@@ -102,6 +103,7 @@ const Typewriter = ({ text, onComplete }: { text: string; onComplete?: () => voi
 };
 
 export default function Home() {
+  const router = useRouter();
   const [birthDate, setBirthDate] = useState("");
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [input, setInput] = useState("");
@@ -111,8 +113,10 @@ export default function Home() {
   const [showSageList, setShowSageList] = useState(false);
   const [showTeamSelector, setShowTeamSelector] = useState(false);
 
-  // ★Mobile Menu State
+  // Mobile Menu State
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  // Privacy Modal State
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentMembers, setCurrentMembers] = useState<string[]>([]);
@@ -280,7 +284,16 @@ export default function Home() {
       case "INTERVENE": sendMessage("議論が膠着しているわ。新しい視点を持つ賢人を1名、介入（ドアノック）させて。"); break;
       case "RESET": clearHistory(); break;
       case "LEGACY": alert("LEGACY Project (賢人化)\n\n現在、機能調整中です。\n(Coming Soon...)"); break;
-      case "SPECIAL": alert("Special Content\n\n現在、鋭意制作中です。ご期待ください。\n(Coming Soon...)"); break;
+
+      // 2軸チャット
+      case "SPECIAL":
+        router.push("/dual-axis");
+        break;
+
+      // プライバシー規定
+      case "PRIVACY":
+        setShowPrivacyModal(true);
+        break;
     }
   };
 
@@ -408,7 +421,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#fff] text-[#1f1f1f] font-sans overflow-hidden">
-      {/* Desktop Sidebar (そのままでOK) */}
+      {/* Desktop Sidebar */}
       <aside className="w-64 bg-[#f9fafb] border-r border-[#eee] flex flex-col hidden md:flex">
         <div className="p-6 border-b border-[#eee]">
           <button onClick={handleGoToTop} className="text-left group w-full">
@@ -425,7 +438,10 @@ export default function Home() {
           <div className="border-t border-[#eee] my-4"></div>
           <MenuButton icon="🗑️" label="記憶の消去 (Reset)" onClick={() => handleMenuAction("RESET")} />
           <MenuButton icon="🏛️" label="LEGACY (賢人化)" onClick={() => handleMenuAction("LEGACY")} />
-          <MenuButton icon="💎" label="スペシャルコンテンツ" onClick={() => handleMenuAction("SPECIAL")} />
+          {/* 2軸チャット */}
+          <MenuButton icon="💎" label="2軸チャット (Dual Axis)" onClick={() => handleMenuAction("SPECIAL")} />
+          {/* プライバシー規定 */}
+          <MenuButton icon="🔒" label="プライバシー規定" onClick={() => handleMenuAction("PRIVACY")} />
         </nav>
         <div className="p-4 text-xs text-[#aaa] text-center font-[family-name:var(--font-cinzel)]">
           COORD: {birthDate ? birthDate.replace(/-/g, '.') : "GUEST"}
@@ -435,18 +451,17 @@ export default function Home() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative bg-white">
 
-        {/* ★Mobile Header (Modified) */}
+        {/* Mobile Header */}
         <header className="md:hidden p-4 border-b border-[#eee] bg-white flex justify-between items-center sticky top-0 z-20">
           <button onClick={handleGoToTop}>
             <span className="font-[family-name:var(--font-cinzel)] font-bold text-lg hover:text-[#a38e5e] transition-colors">THE CABINET</span>
           </button>
-          {/* ハンバーガーメニューボタン */}
           <button onClick={() => setShowMobileMenu(true)} className="p-2 text-2xl text-[#333]">
             ☰
           </button>
         </header>
 
-        {/* ★Mobile Menu Overlay (New) */}
+        {/* Mobile Menu Overlay */}
         {showMobileMenu && (
           <div className="fixed inset-0 z-50 bg-[#fafaf8] flex flex-col animate-fade-in font-sans">
             <div className="p-4 border-b border-[#eee] flex justify-between items-center bg-white">
@@ -466,7 +481,8 @@ export default function Home() {
                 <h3 className="text-xs text-[#a38e5e] tracking-widest border-b border-[#a38e5e]/30 pb-1 mb-2">SYSTEM</h3>
                 <MenuButton icon="🗑️" label="記憶の消去 (Reset)" onClick={() => handleMenuAction("RESET")} />
                 <MenuButton icon="🏛️" label="LEGACY (賢人化)" onClick={() => handleMenuAction("LEGACY")} />
-                <MenuButton icon="💎" label="スペシャルコンテンツ" onClick={() => handleMenuAction("SPECIAL")} />
+                <MenuButton icon="💎" label="2軸チャット (Dual Axis)" onClick={() => handleMenuAction("SPECIAL")} />
+                <MenuButton icon="🔒" label="プライバシー規定" onClick={() => handleMenuAction("PRIVACY")} />
               </div>
               <div className="pt-8 text-center text-xs text-[#ccc] font-[family-name:var(--font-cinzel)]">
                 COORD: {birthDate ? birthDate : "GUEST"}
@@ -588,6 +604,45 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Modal: Privacy Policy (New) */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm font-sans" onClick={() => setShowPrivacyModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-[#eee] bg-[#fafaf8] flex justify-between items-center">
+              <h2 className="text-lg font-bold text-[#333] font-[family-name:var(--font-cinzel)]">PRIVACY POLICY</h2>
+              <button onClick={() => setShowPrivacyModal(false)} className="text-[#888] hover:text-[#333] text-2xl">×</button>
+            </div>
+            <div className="p-6 bg-white overflow-y-auto max-h-[60vh] text-sm text-[#555] leading-relaxed space-y-4">
+              <h3 className="font-bold text-[#333] text-base mb-2">【THE CABINET は、あなたの秘密をサーバーに残しません】</h3>
+              <p>当サービスは、ユーザーのプライバシーと対話の秘匿性を最優先に設計されています。</p>
+
+              <div className="bg-[#f9fafb] p-4 rounded-lg space-y-2 border border-[#eee]">
+                <h4 className="font-bold text-[#333]">1. データはあなたの端末だけに</h4>
+                <p className="text-xs">過去の対話履歴や設定（生年月日など）は、すべてお客様ご自身のブラウザ内（ローカルストレージ）にのみ保存されます。運営側が管理するサーバーやデータベースに、個人の会話ログが永続的に保存・閲覧されることはありません。</p>
+              </div>
+
+              <div className="bg-[#f9fafb] p-4 rounded-lg space-y-2 border border-[#eee]">
+                <h4 className="font-bold text-[#333]">2. リセット権限はあなたに</h4>
+                <p className="text-xs">メニュー内の「記憶の消去 (Reset)」を実行、またはブラウザのキャッシュを削除することで、全てのデータは完全に消滅します。</p>
+              </div>
+
+              <div className="bg-[#f9fafb] p-4 rounded-lg space-y-2 border border-[#eee]">
+                <h4 className="font-bold text-[#333]">3. AI処理の安全性</h4>
+                <p className="text-xs">会話の生成には Google Gemini API を使用しています。入力されたデータは回答生成のために一時的に処理されますが、当サービスの運営者がその内容を傍受・監視することはありません。</p>
+              </div>
+
+              <p className="text-xs text-[#888] pt-2 text-center">安心してお使いいただける「完全なプライベート空間」を目指しています。</p>
+            </div>
+            <div className="p-4 border-t border-[#eee] bg-[#fafaf8] text-center">
+              <button onClick={() => setShowPrivacyModal(false)} className="px-6 py-2 bg-[#333] text-white text-xs rounded-full hover:bg-[#555] transition-colors">
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{` .font-sans { font-family: 'Noto Sans JP', sans-serif; } .font-serif { font-family: 'Shippori Mincho', serif; } @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; } .animate-fade-in { animation: fadeInUp 0.8s ease-out forwards; } `}</style>
     </div>
   );
