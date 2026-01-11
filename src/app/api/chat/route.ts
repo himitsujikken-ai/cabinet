@@ -57,12 +57,25 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: result.response.text(), mode: "LEGACY" });
         }
 
-        // --- 2. 日付入力の検知ロジック ---
+        // --- 2. 文脈検知ロジック (NEW) ---
+        // 直前のAIの発言が「提案」や「問いかけ」だったかを判定
+        let lastAiMessageContent = "";
+        if (history && history.length > 0) {
+            const lastMsg = history[history.length - 1];
+            if (lastMsg.role === "assistant" || lastMsg.role === "model") {
+                lastAiMessageContent = lastMsg.content || "";
+            }
+        }
+        const isPendingCoordination = lastAiMessageContent.includes("再招集") ||
+            lastAiMessageContent.includes("コーディネート") ||
+            lastAiMessageContent.includes("どちらになさいますか");
+
+        // --- 3. 日付入力の検知ロジック ---
         const datePattern = /(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/;
         const dateMatch = message.match(datePattern);
         const isDateInput = dateMatch && message.length < 20;
 
-        // --- 3. 運命情報の更新 ---
+        // --- 4. 運命情報の更新 ---
         let currentBirthDate = birthDate;
         if (isDateInput) {
             const y = dateMatch[1];
@@ -77,7 +90,7 @@ export async function POST(req: Request) {
         const analysis = currentBirthDate ? AstroLogic.analyze(currentBirthDate) : "データなし（ゲスト）";
         const userProfile = `【ユーザー運命情報・周期律】\n${analysis}\n\n※時読みナビゲーターは、この「運命情報」と「現在時刻」を掛け合わせてアドバイスせよ。`;
 
-        // --- 4. DBアップデート ---
+        // --- 5. DBアップデート ---
         const UPDATED_DB = SAGE_DB.map(s => {
             let newName = s.name;
             let newRole = s.role;
@@ -87,17 +100,20 @@ export async function POST(req: Request) {
             return { ...s, name: newName, role: newRole };
         });
 
-        // --- 5. メンバー決定ロジック ---
+        // --- 6. メンバー決定ロジック ---
         let activeTeam: Sage[] = [];
         const isGrandCompass = message.includes("Grand Compass");
         const isGrandCompassExisting = message.includes("Grand Compass再起動（設定済み）");
         const isCheckinChoice = message.includes("メンバーを自分で選ぶか");
         const isSummonCommand = message.includes("招集命令") || message.includes("緊急招集") || message.includes("呼んで") || message.includes("招集");
 
+        // クライアントからの名簿引き継ぎ
+        // ※「コーディネート待ち(isPendingCoordination)」の時は、前回裏で選ばれたメンバーを引き継ぐ
         if (!isGrandCompass && !isCheckinChoice && !isSummonCommand && !isDateInput && currentMembers && Array.isArray(currentMembers) && currentMembers.length > 0) {
             activeTeam = currentMembers.map(name => UPDATED_DB.find(s => s.name === name)).filter(s => s !== undefined) as Sage[];
         }
 
+        // メンバー自動選抜（まだ誰もいない、または強制選抜時）
         if (activeTeam.length === 0 && !isSummonCommand) {
             if (isGrandCompass || !isCheckinChoice) {
                 if (!isCheckinChoice) {
@@ -107,7 +123,7 @@ export async function POST(req: Request) {
             }
         }
 
-        // --- 6. プロンプト生成 (Roster) ---
+        // --- 7. プロンプト生成 (Roster) ---
         const rosterText = activeTeam.map(s => {
             let desc = `- ${s.name} (${s.role}): ${s.philosophy} 口調:${s.tone}`;
             if (s.category === "都道府県") {
@@ -142,6 +158,28 @@ export async function POST(req: Request) {
    - 「この新しい運命座標に基づき、最適な賢人たちを再招集（コーディネート）いたしましょうか？」と提案してください。
 
 【出力フォーマット】JSON配列形式。
+`;
+        }
+        else if (isPendingCoordination) {
+            // ★【修正】コーディネート保留中の場合（ユーザーがいきなり相談してきた場合もここを通る）
+            SYSTEM_PROMPT = `
+あなたは「THE CABINET」のAI議長です。
+前回の「再招集の提案」に対し、ユーザーから回答（または新たな相談）がありました。
+
+【重要任務：チーム結成の儀】
+ユーザーがいきなり具体的な相談を始めた場合でも、**必ず最初に「メンバー選抜の宣言と紹介」を行ってください。**
+いきなり賢人に回答させてはいけません。
+
+【手順】
+1. **議長**: 
+   - 「承知いたしました。では、現在の運命座標（および相談内容）に基づき、こちらの賢人たちを選抜しました」と宣言してください。
+   - 選抜された3名（${simpleRoster}）を一人ずつ紹介し、**なぜこのメンバーを選んだのか（選抜根拠）**をユーザーの相談内容や運勢と絡めて説明してください。
+   - 最後に「では、議論を始めましょう」と促してください。
+   
+2. **賢人たち**:
+   - 議長の紹介が終わった後、ユーザーの相談内容「${message}」に対して、それぞれの視点からアドバイスを行ってください。
+
+【出力】JSON配列形式。
 `;
         }
         else if (isSummonCommand) {
@@ -237,7 +275,7 @@ ${userProfile}
 `;
         }
         else {
-            // ★修正: 標準会話モード（リアルな議論・一言応酬の許可）
+            // 標準会話モード（リアルな議論・一言応酬の許可）
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」の賢人会議シミュレーターです。
 現在時刻: ${planetaryContext}
@@ -264,10 +302,10 @@ ${rosterText}
 `;
         }
 
-        // --- 7. Gemini API 呼び出し ---
+        // --- 8. Gemini API 呼び出し ---
         const formattedHistory = [];
         formattedHistory.push({ role: "user", parts: [{ text: `【SYSTEM INSTRUCTION】\n${SYSTEM_PROMPT}` }] });
-        formattedHistory.push({ role: "model", parts: [{ text: "Understood. Japanese ONLY. Navigator MUST be silent in standard mode. Real discussion mode active (short emotional replies allowed). Output JSON." }] });
+        formattedHistory.push({ role: "model", parts: [{ text: "Understood. Japanese ONLY. Navigator MUST be silent in standard mode. Real discussion mode active. Output JSON." }] });
 
         let currentAssistantBlock: any[] = [];
         if (history && history.length > 0) {
