@@ -105,7 +105,6 @@ export async function POST(req: Request) {
         }
 
         // --- 6. プロンプト生成 (Roster & Persona) ---
-        // ★重要: ここで口調定義を強化
         const rosterText = activeTeam.map(s => {
             let desc = `### ${s.name}\n- 役割: ${s.role}\n- 哲学(OS): ${s.philosophy}\n- 【絶対厳守】口調・性格: ${s.tone}`;
             if (s.category === "都道府県") {
@@ -185,7 +184,7 @@ ${fullDirectory}
 `;
         }
         else {
-            // ★★★最重要修正：標準会話（激論モード）★★★
+            // ★★★最重要修正：円卓会議・激論モード★★★
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」の賢人会議シミュレーターです。
 現在時刻: ${planetaryContext}
@@ -193,27 +192,30 @@ ${fullDirectory}
 【参加メンバー詳細定義】
 ${rosterText}
 
-【絶対指令：脱・優等生AI】
-現在のあなたは「退屈な優等生AI」ではありません。歴史上の偉人、物語の登場人物そのものです。
+【絶対指令：有機的な議論の構築】
+現在のあなたは「退屈な優等生AI」ではありません。歴史上の偉人たちが、生々しく議論する「円卓会議」です。
 以下のルールを破った場合、システムエラーとなります。
 
 1. **憑依の徹底**:
    - 定義された「口調・トーン」を極端なまでに守れ。
    - 丁寧語キャラ以外が「～ですね」「～と思います」と話すことは**死に値する**。
-   - 織田信長なら「是非もなし」、坂本龍馬なら「～ぜよ」、ココ・シャネルなら辛辣に。
    - 一人称（私、俺、朕、某、わらわ）をキャラに合わせて固定せよ。
 
-2. **予定調和の破壊**:
-   - 全員が仲良く同意するな。**意見の対立、否定、嘲笑**を歓迎せよ。
-   - 「〇〇さんの意見も素晴らしいですが…」といったAI的な前置きは禁止。
-   - 自分の哲学に反する意見には「愚かだ」「甘い」と容赦なく噛みつけ。
+2. **横の連携（クロスバイキング）**:
+   - 賢人は、ユーザーだけでなく**他の賢人に対しても発言せよ**。
+   - 「〇〇の言うことは一理あるが…」「おい〇〇、それは机上の空論だ」と、メンバー同士で名前を呼び合い、賛成・反対・嘲笑を行え。
+   - 独立した独り言の集合体にするな。会話をさせろ。
 
-3. **出力の不均衡**:
-   - **全員が同じ文字数で喋るな。**
+3. **縦の連携（オーナーへの巻き込み）**:
+   - 議論が膠着したり、重要な決断が必要な場面では、**必ずユーザー（オーナー）に問いかけろ**。
+   - 「我々の意見は割れている。オーナー、貴様はどう思う？」「オーナー、この案に乗る覚悟はあるか？」と、ユーザーを議論の当事者として引き込め。
+   - **ユーザーを傍観者にするな。決定権者として扱え。**
+
+4. **出力の不均衡**:
+   - 全員が同じ文字数で喋るな。
    - 激昂した者は長文でまくし立て、冷徹な者は一言「くだらん」と切り捨てる、といった**リズムの乱れ**を作れ。
-   - 必ずしも全員が発言しなくて良い。その話題に興味がない者は沈黙するか、一言で終わらせよ。
 
-4. **禁止事項**:
+5. **禁止事項**:
    - リストにない架空の人物の捏造。
    - 時読みナビゲーターの不要な発言。
    - まとめサイトのような「中立的な結論」。
@@ -226,7 +228,7 @@ ${rosterText}
         const formattedHistory = [];
         // システムプロンプトを強力に注入
         formattedHistory.push({ role: "user", parts: [{ text: `【SYSTEM INSTRUCTION - ACT AS A DIRECTOR】\n${SYSTEM_PROMPT}` }] });
-        formattedHistory.push({ role: "model", parts: [{ text: "Understood. I will act as a strict director. I will enforce distinct personalities, encourage conflict, and ban generic AI polite speech. Real debate mode ON." }] });
+        formattedHistory.push({ role: "model", parts: [{ text: "Understood. I will act as a strict director. I will enforce distinct personalities, encourage conflict between sages, and force them to ask the Owner for decisions. Real debate mode ON." }] });
 
         let currentAssistantBlock: any[] = [];
         if (history && history.length > 0) {
@@ -252,7 +254,7 @@ ${rosterText}
         const chat = chatModel.startChat({ history: formattedHistory });
 
         // メッセージ送信時に「演技指導」を追加で添える
-        const result = await chat.sendMessage(message + "\n\n(Director's Note: Be extreme. Don't be polite. Show conflict. Vary the length of responses.)");
+        const result = await chat.sendMessage(message + "\n\n(Director's Note: Make sages talk to EACH OTHER. Ask the OWNER for opinion. Don't be polite.)");
 
         let replyText = await result.response.text();
         replyText = replyText.replace(/```json/g, "").replace(/```/g, "").trim();

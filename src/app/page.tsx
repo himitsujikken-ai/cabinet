@@ -122,6 +122,7 @@ export default function Home() {
   const [currentMembers, setCurrentMembers] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null); // ★追加: テキストエリア用Ref
 
   useEffect(() => {
     const savedBirthDate = localStorage.getItem("cabinet_birthdate");
@@ -155,6 +156,14 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingIndex]);
+
+  // ★追加: テキストエリアの自動高さ調整
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`; // 最大200pxまで伸びる
+    }
+  }, [input]);
 
   const sendMessage = async (text: string, isSystemCommand = false, membersOverride?: string[], birthDateOverride?: string) => {
     if ((!text.trim() && !isSystemCommand) || isLoading) return;
@@ -233,6 +242,14 @@ export default function Home() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     sendMessage(input);
+  };
+
+  // ★追加: Enterキーで送信、Shift+Enterで改行
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
   };
 
   const clearHistory = () => {
@@ -543,12 +560,28 @@ export default function Home() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Input Area (Modified: Textarea) */}
         <div className="p-4 md:p-6 bg-white border-t border-[#eee]">
           <form onSubmit={handleSubmit} className="relative max-w-4xl mx-auto">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading || (messages.length > 0 && typingIndex < messages.length)} placeholder="ここに議題を入力... (YYYY-MM-DD で生年月日更新)" className="w-full bg-[#f8f9fa] border border-[#ddd] text-[#333] px-6 py-4 rounded-full focus:outline-none focus:border-[#a38e5e] focus:ring-1 focus:ring-[#a38e5e] transition-all shadow-inner disabled:opacity-50 font-sans" />
-            <button type="submit" disabled={!input || isLoading} className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-[#333] text-white rounded-full hover:bg-[#000] disabled:bg-[#ccc] transition-all">
-              <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-            </button>
+            <div className="relative w-full">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading || (messages.length > 0 && typingIndex < messages.length)}
+                placeholder="ここに議題を入力... (Shift+Enterで改行)"
+                rows={1}
+                className="w-full bg-[#f8f9fa] border border-[#ddd] text-[#333] pl-6 pr-14 py-4 rounded-2xl focus:outline-none focus:border-[#a38e5e] focus:ring-1 focus:ring-[#a38e5e] transition-all shadow-inner disabled:opacity-50 font-sans resize-none overflow-hidden min-h-[56px] max-h-[200px]"
+              />
+              <button
+                type="submit"
+                disabled={!input || isLoading}
+                className="absolute right-2 bottom-2 p-3 bg-[#333] text-white rounded-full hover:bg-[#000] disabled:bg-[#ccc] transition-all shadow-md z-10"
+              >
+                <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+              </button>
+            </div>
           </form>
         </div>
       </main>
@@ -605,7 +638,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal: Privacy Policy (New) */}
+      {/* Modal: Privacy Policy */}
       {showPrivacyModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm font-sans" onClick={() => setShowPrivacyModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
