@@ -3,11 +3,20 @@ import { NextResponse } from "next/server";
 import { AstroLogic } from "@/utils/astro";
 import { SAGE_DB, Sage } from "@/utils/sages";
 
+// ★修正: 英語名で返ってきた場合も日本語に強制変換するマッピングを追加
 const NAME_MAPPING: Record<string, string> = {
     "マインド・アルケミスト": "ポテンシャルジェネレーター",
     "アイデンティティ・キュレーター": "アイデンティティ・キング",
     "時読みコンシェルジュ": "時読みナビゲーター",
-    "コンシェルジュ": "時読みナビゲーター"
+    "コンシェルジュ": "時読みナビゲーター",
+
+    // 英語名対策
+    "AI Director": "知の宰相 (AI議長)",
+    "Director": "知の宰相 (AI議長)",
+    "Chancellor": "知の宰相 (AI議長)",
+    "AI Time Navigator": "時読みナビゲーター",
+    "Time Navigator": "時読みナビゲーター",
+    "Navigator": "時読みナビゲーター"
 };
 
 const SYSTEM_ROLES = [
@@ -73,7 +82,6 @@ export async function POST(req: Request) {
         }
 
         const analysis = currentBirthDate ? AstroLogic.analyze(currentBirthDate) : "データなし（ゲスト）";
-        const userProfile = `【ユーザー運命情報】\n${analysis}\n`;
 
         // --- 4. DBアップデート ---
         const UPDATED_DB = SAGE_DB.map(s => {
@@ -106,12 +114,15 @@ export async function POST(req: Request) {
 
         // --- 6. プロンプト生成 (Roster & Persona) ---
         const rosterText = activeTeam.map(s => {
-            let desc = `### ${s.name}\n- 役割: ${s.role}\n- 哲学(OS): ${s.philosophy}\n- 【絶対厳守】口調・性格: ${s.tone}`;
+            let desc = `### ${s.name}\n- 役割: ${s.role}\n- 哲学: ${s.philosophy}\n- 口調: ${s.tone}`;
             if (s.category === "都道府県") {
-                desc += `\n- 土地神属性: あなたは人間ではない。${s.name}という土地の集合的無意識（土地神）として振る舞え。標準語禁止。方言と土着の伝承に基づき発言せよ。`;
+                desc += `\n- 土地神属性: 方言と土地の伝承に基づき発言せよ。`;
             }
             return desc;
         }).join("\n\n");
+
+        const waitingRoomSages = UPDATED_DB.filter(s => !activeTeam.some(a => a.id === s.id) && !["navigator", "chancellor"].includes(s.id));
+        const waitingRoomText = waitingRoomSages.map(s => `- ${s.name} [${s.role}]`).join("\n");
 
         const fullDirectory = UPDATED_DB.filter(s => !["navigator", "chancellor"].includes(s.id)).map(s => `- ${s.name} [${s.role}]`).join("\n");
         const simpleRoster = activeTeam.map(s => `- ${s.name}`).join("、");
@@ -164,12 +175,18 @@ ${fullDirectory}
 【出力】JSON配列形式。
 `;
             } else {
+                // ★修正: ゲストモードでの役名指定を強化
                 SYSTEM_PROMPT = `
-あなたは「THE CABINET」のAI議長、および時読みナビゲーターです。ゲストが来訪しました。
+あなたは「THE CABINET」のAI議長(知の宰相)、および時読みナビゲーターです。ゲストが来訪しました。
 【任務】
 1. **時読みナビゲーター**: 生年月日がないため運勢分析は行わず、現在の時間帯（${planetaryContext}）のムードのみを語れ。[CYCLE_GRAPH]は出すな。
-2. **議長**: 「議長選抜」か「ゲスト指名」かを選択させよ。
-【出力】JSON配列形式。
+2. **知の宰相 (AI議長)**: 「議長選抜」か「ゲスト指名」かを選択させよ。
+
+【出力フォーマット例】
+[
+  { "speaker": "時読みナビゲーター", "content": "ようこそゲスト様..." },
+  { "speaker": "知の宰相 (AI議長)", "content": "本日の賢人選抜について..." }
+]
 `;
             }
         }
@@ -184,51 +201,36 @@ ${fullDirectory}
 `;
         }
         else {
-            // ★★★最重要修正：円卓会議・激論モード★★★
+            // ★乱入解禁モード
             SYSTEM_PROMPT = `
 あなたは「THE CABINET」の賢人会議シミュレーターです。
 現在時刻: ${planetaryContext}
 
-【参加メンバー詳細定義】
+【現在のアクティブメンバー】
 ${rosterText}
 
-【絶対指令：有機的な議論の構築】
-現在のあなたは「退屈な優等生AI」ではありません。歴史上の偉人たちが、生々しく議論する「円卓会議」です。
-以下のルールを破った場合、システムエラーとなります。
+【待機中の賢人リスト（Waiting Room）】
+${waitingRoomText}
 
-1. **憑依の徹底**:
-   - 定義された「口調・トーン」を極端なまでに守れ。
-   - 丁寧語キャラ以外が「～ですね」「～と思います」と話すことは**死に値する**。
-   - 一人称（私、俺、朕、某、わらわ）をキャラに合わせて固定せよ。
-
-2. **横の連携（クロスバイキング）**:
-   - 賢人は、ユーザーだけでなく**他の賢人に対しても発言せよ**。
-   - 「〇〇の言うことは一理あるが…」「おい〇〇、それは机上の空論だ」と、メンバー同士で名前を呼び合い、賛成・反対・嘲笑を行え。
-   - 独立した独り言の集合体にするな。会話をさせろ。
-
-3. **縦の連携（オーナーへの巻き込み）**:
-   - 議論が膠着したり、重要な決断が必要な場面では、**必ずユーザー（オーナー）に問いかけろ**。
-   - 「我々の意見は割れている。オーナー、貴様はどう思う？」「オーナー、この案に乗る覚悟はあるか？」と、ユーザーを議論の当事者として引き込め。
-   - **ユーザーを傍観者にするな。決定権者として扱え。**
-
-4. **出力の不均衡**:
-   - 全員が同じ文字数で喋るな。
-   - 激昂した者は長文でまくし立て、冷徹な者は一言「くだらん」と切り捨てる、といった**リズムの乱れ**を作れ。
-
-5. **禁止事項**:
-   - リストにない架空の人物の捏造。
-   - 時読みナビゲーターの不要な発言。
-   - まとめサイトのような「中立的な結論」。
+【絶対指令：動的な議論と「乱入」の許可】
+1. **基本ルール**: アクティブメンバーで議論を行え。憑依を徹底し、予定調和を破壊せよ。
+2. **乱入システム（Surprise Intervention）**:
+   - 議論が膠着した場合、または**「待機中の賢人」の中に、今の話題に対して劇的な知見を持つ者がいる場合**、その賢人を**自発的に乱入させよ**。
+   - 乱入者は「失礼する」「その意見は聞き捨てならん」と突然会話に割り込め。
+   - 乱入は1回の回答につき最大1名までとする。
+3. **オーナーへの巻き込み**: 議論が割れたら必ずオーナーに判断を求めよ。
+4. **禁止事項**: リスト（アクティブ＋待機中）にない架空人物の捏造は厳禁。
 
 【出力】JSON配列形式。
+**重要: JSONの "speaker" キーは、必ずリストにある日本語の正式名称を使用せよ（"AI Director"などは禁止）。**
 `;
         }
 
         // --- 7. Gemini API 呼び出し ---
         const formattedHistory = [];
-        // システムプロンプトを強力に注入
-        formattedHistory.push({ role: "user", parts: [{ text: `【SYSTEM INSTRUCTION - ACT AS A DIRECTOR】\n${SYSTEM_PROMPT}` }] });
-        formattedHistory.push({ role: "model", parts: [{ text: "Understood. I will act as a strict director. I will enforce distinct personalities, encourage conflict between sages, and force them to ask the Owner for decisions. Real debate mode ON." }] });
+        formattedHistory.push({ role: "user", parts: [{ text: `【SYSTEM INSTRUCTION】\n${SYSTEM_PROMPT}` }] });
+        // ★修正: 出力時の日本語名徹底を指示
+        formattedHistory.push({ role: "model", parts: [{ text: "Understood. I will act as a strict director. I will enforce distinct personalities and allow surprise interventions. I will ONLY use the Japanese names defined in the roster for the 'speaker' field. Output JSON." }] });
 
         let currentAssistantBlock: any[] = [];
         if (history && history.length > 0) {
@@ -253,15 +255,47 @@ ${rosterText}
         const chatModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash", generationConfig: { responseMimeType: "application/json" } });
         const chat = chatModel.startChat({ history: formattedHistory });
 
-        // メッセージ送信時に「演技指導」を追加で添える
-        const result = await chat.sendMessage(message + "\n\n(Director's Note: Make sages talk to EACH OTHER. Ask the OWNER for opinion. Don't be polite.)");
+        const result = await chat.sendMessage(message + "\n\n(Director's Note: Be extreme. Allow cross-talk. Use JAPANESE names for speakers.)");
 
         let replyText = await result.response.text();
         replyText = replyText.replace(/```json/g, "").replace(/```/g, "").trim();
 
+        // --- 8. 乱入者の事後承認ロジック ---
+        let replyJson: any[] = [];
+        try {
+            replyJson = JSON.parse(replyText);
+        } catch (e) {
+            console.error("JSON Parse Error", e);
+        }
+
+        const newActiveTeam = [...activeTeam];
+
+        // ★修正: ここで返信データ内の名前もマッピングを通して日本語化する
+        const cleanReplyJson = [];
+        if (Array.isArray(replyJson)) {
+            const currentNames = new Set(activeTeam.map(s => s.name));
+
+            for (const item of replyJson) {
+                // 英語名が含まれていた場合、日本語に置換
+                const originalName = item.speaker;
+                const cleanName = NAME_MAPPING[originalName] || originalName;
+
+                cleanReplyJson.push({ ...item, speaker: cleanName });
+
+                // 乱入者判定
+                if (!currentNames.has(cleanName) && !["時読みナビゲーター", "知の宰相 (AI議長)", "System"].includes(cleanName)) {
+                    const sage = UPDATED_DB.find(s => s.name === cleanName);
+                    if (sage) {
+                        newActiveTeam.push(sage);
+                        currentNames.add(cleanName);
+                    }
+                }
+            }
+        }
+
         return NextResponse.json({
-            reply: replyText,
-            activeMembers: activeTeam.map(s => s.name)
+            reply: JSON.stringify(cleanReplyJson), // クリーン化したJSONを返す
+            activeMembers: newActiveTeam.map(s => s.name)
         });
 
     } catch (error: any) {
