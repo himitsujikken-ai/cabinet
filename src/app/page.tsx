@@ -24,11 +24,21 @@ const TASKFORCE_THEMES = [
   { id: "love", label: "愛と調和", icon: "❤️", desc: "家族・パートナー・感情" },
 ];
 
+// システムキャラのフォールバック用
 const SPEAKER_ROLES: Record<string, string> = {
   "知の宰相 (AI議長)": "THE CABINET 議長",
   "時読みナビゲーター": "時読み/進行",
   "アイデンティティ・キング": "Only1・本質キュレーション",
   "ポテンシャルジェネレーター": "チーム論・心理錬金術",
+};
+
+// ★★★ 修正: 賢人のサブネーム（Role/OS名）をDBから取得する関数 ★★★
+const getSageRole = (speakerName?: string) => {
+  if (!speakerName) return "";
+  // 賢人データベースから名前が一致するものを探す
+  const sage = SAGE_DB.find(s => s.name === speakerName);
+  // 見つかればそのRoleを、なければシステム用のフォールバックを返す
+  return sage ? sage.role : (SPEAKER_ROLES[speakerName] || "");
 };
 
 const playFrequency = (hz: number) => {
@@ -71,13 +81,11 @@ const Avatar = ({ name }: { name: string }) => {
   return <div className={`w-10 h-10 rounded-full ${colorClass} flex items-center justify-center text-white font-bold shadow-sm text-lg`}>{initial}</div>;
 };
 
-// ★★★ 修正: instantプロパティを追加し、過去ログはアニメーションをスキップする ★★★
 const Typewriter = ({ text, onComplete, instant = false }: { text: string; onComplete?: () => void, instant?: boolean }) => {
   const [displayedText, setDisplayedText] = useState(instant ? text : "");
   const indexRef = useRef(0);
 
   useEffect(() => {
-    // インスタント表示モードなら、全テキストを即座に表示して終了
     if (instant) {
       setDisplayedText(text);
       if (onComplete) onComplete();
@@ -146,7 +154,6 @@ export default function Home() {
         if (parsedHistory.length > 0) {
           setMessages(parsedHistory);
           setIsSetupComplete(true);
-          // 過去ログを読み込んだ際は、typingIndexを最大にして全過去ログのタイピングをスキップさせる
           setTypingIndex(parsedHistory.length);
         }
       } catch (e) { console.error("Failed to load history:", e); }
@@ -525,7 +532,8 @@ export default function Home() {
           {messages.map((msg, index) => {
             if (index > typingIndex) return null;
             const isUser = msg.role === "user";
-            const roleText = msg.speaker && SPEAKER_ROLES[msg.speaker] ? SPEAKER_ROLES[msg.speaker] : "";
+            // ★★★ 修正: 賢人のサブネーム（Role）を関数経由で取得 ★★★
+            const roleText = getSageRole(msg.speaker);
             const isBuddha = msg.speaker?.includes("ブッダ");
 
             return (
@@ -538,6 +546,7 @@ export default function Home() {
                     {!isUser && (
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-[#1e40af] text-base font-sans tracking-wide">{msg.speaker}</span>
+                        {/* ★★★ サブネームの表示エリア ★★★ */}
                         <span className="text-xs text-[#888] font-sans">{roleText}</span>
                         {isBuddha && (
                           <button onClick={() => playFrequency(963)} className="ml-2 px-2 py-0.5 bg-[#E6E6FA] text-[#4B0082] text-[10px] rounded-full hover:bg-[#D8BFD8] transition-colors flex items-center gap-1">
@@ -553,7 +562,6 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* ★★★ 修正: 過去ログ(index < typingIndex)とユーザー発言はinstant=trueで一瞬で表示 ★★★ */}
                       {isUser || index < typingIndex ? (
                         <Typewriter text={msg.content.replace("[CYCLE_GRAPH]", "")} instant={true} />
                       ) : (
