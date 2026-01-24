@@ -71,11 +71,19 @@ const Avatar = ({ name }: { name: string }) => {
   return <div className={`w-10 h-10 rounded-full ${colorClass} flex items-center justify-center text-white font-bold shadow-sm text-lg`}>{initial}</div>;
 };
 
-const Typewriter = ({ text, onComplete }: { text: string; onComplete?: () => void }) => {
-  const [displayedText, setDisplayedText] = useState("");
+// ★★★ 修正: instantプロパティを追加し、過去ログはアニメーションをスキップする ★★★
+const Typewriter = ({ text, onComplete, instant = false }: { text: string; onComplete?: () => void, instant?: boolean }) => {
+  const [displayedText, setDisplayedText] = useState(instant ? text : "");
   const indexRef = useRef(0);
 
   useEffect(() => {
+    // インスタント表示モードなら、全テキストを即座に表示して終了
+    if (instant) {
+      setDisplayedText(text);
+      if (onComplete) onComplete();
+      return;
+    }
+
     indexRef.current = 0;
     setDisplayedText("");
     const safeText = text || "";
@@ -90,7 +98,7 @@ const Typewriter = ({ text, onComplete }: { text: string; onComplete?: () => voi
       indexRef.current++;
     }, 20);
     return () => clearInterval(intervalId);
-  }, [text]);
+  }, [text, instant]);
 
   return (
     <span className="whitespace-pre-wrap">
@@ -112,17 +120,16 @@ export default function Home() {
   const [typingIndex, setTypingIndex] = useState<number>(-1);
   const [showSageList, setShowSageList] = useState(false);
   const [showTeamSelector, setShowTeamSelector] = useState(false);
-
-  // Mobile Menu State
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  // Privacy Modal State
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [selectedSageForSummon, setSelectedSageForSummon] = useState<string | null>(null);
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentMembers, setCurrentMembers] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null); // ★追加: テキストエリア用Ref
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const savedBirthDate = localStorage.getItem("cabinet_birthdate");
@@ -139,6 +146,7 @@ export default function Home() {
         if (parsedHistory.length > 0) {
           setMessages(parsedHistory);
           setIsSetupComplete(true);
+          // 過去ログを読み込んだ際は、typingIndexを最大にして全過去ログのタイピングをスキップさせる
           setTypingIndex(parsedHistory.length);
         }
       } catch (e) { console.error("Failed to load history:", e); }
@@ -157,11 +165,10 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingIndex]);
 
-  // ★追加: テキストエリアの自動高さ調整
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`; // 最大200pxまで伸びる
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [input]);
 
@@ -244,8 +251,8 @@ export default function Home() {
     sendMessage(input);
   };
 
-  // ★追加: Enterキーで送信、Shift+Enterで改行
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e as any);
@@ -277,15 +284,12 @@ export default function Home() {
   };
 
   const handleMenuAction = (action: string) => {
-    // モバイルメニューを閉じる
     setShowMobileMenu(false);
 
     switch (action) {
       case "LIST": setShowSageList(true); break;
       case "TEAM": setShowTeamSelector(true); break;
       case "CHANGE": sendMessage("議論の流れを変えたいわ。現在のメンバーを解散し、全く違う視点を持つメンバーに入れ替えて。", false); break;
-      case "LOG": alert("現在の画面を上にスクロールすると、過去の対話を確認できます。"); break;
-
       case "COMPASS":
         if (!birthDate) {
           const inputDate = prompt("Grand Compassによる運命再診断には、正確な生年月日が必要です。\n入力例: 1990-01-01");
@@ -297,26 +301,27 @@ export default function Home() {
           sendMessage("【システム指令】Grand Compass再起動（設定済み）。現在の生年月日で既に分析済みであり、その座標で稼働中であることをオーナーに伝えてください。もし生年月日を変更して再診断したい場合は、一度「記憶の消去(Reset)」を行う必要があると案内してください。その上で、現在の運命座標に基づいてメンバーを再選抜（リシャッフル）してください。", true);
         }
         break;
-
       case "INTERVENE": sendMessage("議論が膠着しているわ。新しい視点を持つ賢人を1名、介入（ドアノック）させて。"); break;
       case "RESET": clearHistory(); break;
       case "LEGACY": alert("LEGACY Project (賢人化)\n\n現在、機能調整中です。\n(Coming Soon...)"); break;
-
-      // 2軸チャット
-      case "SPECIAL":
-        router.push("/dual-axis");
-        break;
-
-      // プライバシー規定
-      case "PRIVACY":
-        setShowPrivacyModal(true);
-        break;
+      case "SPECIAL": router.push("/dual-axis"); break;
+      case "PRIVACY": setShowPrivacyModal(true); break;
+      case "MANUAL": setShowManualModal(true); break;
     }
   };
 
-  const summonSage = (sageName: string) => {
+  const summonSageConfirm = (type: "ADD" | "SOLO") => {
+    if (!selectedSageForSummon) return;
+
+    const sageName = selectedSageForSummon;
+    setSelectedSageForSummon(null);
     setShowSageList(false);
-    sendMessage(`【招集命令】\n${sageName}、会議に参加して意見を述べてくれ。`);
+
+    if (type === "ADD") {
+      sendMessage(`【招集命令】\n${sageName}を、現在の議論に「追加招集」せよ。\n既存メンバーはそのままで、この賢人を参加させてくれ。`);
+    } else {
+      sendMessage(`【招集命令】\n${sageName}と「サシ（1対1）」で話したい。\n他のメンバーは退席させ、この賢人だけを呼んでくれ。`);
+    }
   };
 
   const summonTaskForce = (themeLabel: string) => {
@@ -348,6 +353,9 @@ export default function Home() {
     "現代・内閣": ["現代・内閣", "Modern", "Secret", "Legend"],
     "哲学・革新": ["哲学・革新", "Spirit", "Women"],
     "戦略・歴史": ["戦略・歴史", "Strategy"],
+    "日本史・維新・武将": ["日本史・維新・武将"],
+    "世界史・戦略": ["世界史・戦略"],
+    "科学・芸術・哲学": ["科学・芸術・哲学"],
     "都道府県": ["都道府県"]
   };
 
@@ -405,6 +413,11 @@ export default function Home() {
                 }
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
+
+                if (!hasHistory) {
+                  setShowManualModal(true);
+                }
+
                 setTimeout(() => sendMessage("【システム指令】チェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法を案内せよ。", true, [], birthDate), 500);
               }}
               className="px-10 py-4 border border-[#ddd] text-[#333] tracking-[0.2em] text-xs hover:border-[#a38e5e] hover:text-[#a38e5e] transition-all duration-700 uppercase font-[family-name:var(--font-cinzel)]"
@@ -424,6 +437,11 @@ export default function Home() {
 
                 setIsSetupComplete(true);
                 setTypingIndex(-1);
+
+                if (!hasHistory) {
+                  setShowManualModal(true);
+                }
+
                 setTimeout(() => sendMessage("【システム指令】ゲストチェックイン処理。オーナーに「メンバーを自分で選ぶか、議長に任せるか」の選択肢を提示し、操作方法（サイドバー/ハンバーガーメニュー）を案内せよ。", true, [], ""), 500);
               }}
               className="mt-4 text-[10px] text-[#999] hover:text-[#a38e5e] tracking-[0.1em] border-b border-transparent hover:border-[#a38e5e] pb-0.5 transition-colors font-sans"
@@ -438,7 +456,6 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-[#fff] text-[#1f1f1f] font-sans overflow-hidden">
-      {/* Desktop Sidebar */}
       <aside className="w-64 bg-[#f9fafb] border-r border-[#eee] flex flex-col hidden md:flex">
         <div className="p-6 border-b border-[#eee]">
           <button onClick={handleGoToTop} className="text-left group w-full">
@@ -453,11 +470,10 @@ export default function Home() {
           <MenuButton icon="🧭" label="Grand Compass" onClick={() => handleMenuAction("COMPASS")} />
           <MenuButton icon="🚪" label="介入を呼び込む" onClick={() => handleMenuAction("INTERVENE")} />
           <div className="border-t border-[#eee] my-4"></div>
+          <MenuButton icon="📖" label="操作マニュアル" onClick={() => handleMenuAction("MANUAL")} />
           <MenuButton icon="🗑️" label="記憶の消去 (Reset)" onClick={() => handleMenuAction("RESET")} />
           <MenuButton icon="🏛️" label="LEGACY (賢人化)" onClick={() => handleMenuAction("LEGACY")} />
-          {/* 2軸チャット */}
           <MenuButton icon="💎" label="2軸チャット (Dual Axis)" onClick={() => handleMenuAction("SPECIAL")} />
-          {/* プライバシー規定 */}
           <MenuButton icon="🔒" label="プライバシー規定" onClick={() => handleMenuAction("PRIVACY")} />
         </nav>
         <div className="p-4 text-xs text-[#aaa] text-center font-[family-name:var(--font-cinzel)]">
@@ -465,10 +481,7 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col relative bg-white">
-
-        {/* Mobile Header */}
         <header className="md:hidden p-4 border-b border-[#eee] bg-white flex justify-between items-center sticky top-0 z-20">
           <button onClick={handleGoToTop}>
             <span className="font-[family-name:var(--font-cinzel)] font-bold text-lg hover:text-[#a38e5e] transition-colors">THE CABINET</span>
@@ -478,7 +491,6 @@ export default function Home() {
           </button>
         </header>
 
-        {/* Mobile Menu Overlay */}
         {showMobileMenu && (
           <div className="fixed inset-0 z-50 bg-[#fafaf8] flex flex-col animate-fade-in font-sans">
             <div className="p-4 border-b border-[#eee] flex justify-between items-center bg-white">
@@ -496,6 +508,7 @@ export default function Home() {
               </div>
               <div className="space-y-3 pt-4">
                 <h3 className="text-xs text-[#a38e5e] tracking-widest border-b border-[#a38e5e]/30 pb-1 mb-2">SYSTEM</h3>
+                <MenuButton icon="📖" label="操作マニュアル" onClick={() => handleMenuAction("MANUAL")} />
                 <MenuButton icon="🗑️" label="記憶の消去 (Reset)" onClick={() => handleMenuAction("RESET")} />
                 <MenuButton icon="🏛️" label="LEGACY (賢人化)" onClick={() => handleMenuAction("LEGACY")} />
                 <MenuButton icon="💎" label="2軸チャット (Dual Axis)" onClick={() => handleMenuAction("SPECIAL")} />
@@ -540,8 +553,9 @@ export default function Home() {
                         </div>
                       )}
 
+                      {/* ★★★ 修正: 過去ログ(index < typingIndex)とユーザー発言はinstant=trueで一瞬で表示 ★★★ */}
                       {isUser || index < typingIndex ? (
-                        <Typewriter text={msg.content.replace("[CYCLE_GRAPH]", "")} />
+                        <Typewriter text={msg.content.replace("[CYCLE_GRAPH]", "")} instant={true} />
                       ) : (
                         <Typewriter text={msg.content.replace("[CYCLE_GRAPH]", "")} onComplete={() => setTypingIndex(prev => prev + 1)} />
                       )}
@@ -560,7 +574,6 @@ export default function Home() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area (Modified: Textarea) */}
         <div className="p-4 md:p-6 bg-white border-t border-[#eee]">
           <form onSubmit={handleSubmit} className="relative max-w-4xl mx-auto">
             <div className="relative w-full">
@@ -586,14 +599,15 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Modal: Sage List (Masonry Layout) */}
+      {/* Modal: Sage List & Summon Options */}
       {showSageList && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm font-sans" onClick={() => setShowSageList(false)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col relative" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-[#eee] flex justify-between items-center bg-[#f9fafb]">
               <h2 className="text-xl font-bold text-[#333]">賢人招集 (Click to Summon)</h2>
               <button onClick={() => setShowSageList(false)} className="text-[#888] hover:text-[#333] text-2xl">×</button>
             </div>
+
             <div className="flex-1 overflow-y-auto p-6 bg-[#fff]">
               <div className="columns-1 md:columns-2 lg:columns-3 gap-8">
                 {Object.entries(categoryGroups).map(([groupName, categories]) => (
@@ -601,7 +615,11 @@ export default function Home() {
                     <h3 className="text-[#a38e5e] font-serif border-b border-[#eee] pb-2 text-lg tracking-widest text-center mb-2">{groupName}</h3>
                     <div className="flex flex-col gap-3">
                       {SAGE_DB.filter(s => categories.includes(s.category) && !s.id.includes("chancellor")).map((sage) => (
-                        <button key={sage.id} onClick={() => summonSage(sage.name)} className="flex gap-3 p-3 border border-[#eee] rounded-lg hover:border-[#a38e5e] hover:bg-[#fcfcfc] hover:shadow-md transition-all text-left group">
+                        <button
+                          key={sage.id}
+                          onClick={() => setSelectedSageForSummon(sage.name)}
+                          className="flex gap-3 p-3 border border-[#eee] rounded-lg hover:border-[#a38e5e] hover:bg-[#fcfcfc] hover:shadow-md transition-all text-left group"
+                        >
                           <div className="group-hover:scale-105 transition-transform"><Avatar name={sage.name} /></div>
                           <div><div className="font-bold text-[#333] text-sm group-hover:text-[#a38e5e]">{sage.name}</div><div className="text-[10px] text-[#666] mt-0.5">{sage.role}</div></div>
                         </button>
@@ -611,6 +629,41 @@ export default function Home() {
                 ))}
               </div>
             </div>
+
+            {selectedSageForSummon && (
+              <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-8 animate-fade-in">
+                <h3 className="text-2xl font-bold text-[#333] mb-2 font-[family-name:var(--font-cinzel)]">{selectedSageForSummon}</h3>
+                <p className="text-sm text-[#666] mb-8">この賢人をどのように招集しますか？</p>
+
+                <div className="flex flex-col sm:flex-row gap-6 w-full max-w-lg">
+                  <button
+                    onClick={() => summonSageConfirm("ADD")}
+                    className="flex-1 p-6 border border-[#a38e5e] rounded-xl hover:bg-[#a38e5e] hover:text-white transition-all group text-center shadow-sm"
+                  >
+                    <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">➕</div>
+                    <div className="font-bold text-lg mb-1">追加招集</div>
+                    <div className="text-[10px] opacity-70">現在の議論に参加させる</div>
+                  </button>
+
+                  <button
+                    onClick={() => summonSageConfirm("SOLO")}
+                    className="flex-1 p-6 border border-[#333] rounded-xl hover:bg-[#333] hover:text-white transition-all group text-center shadow-sm"
+                  >
+                    <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">🔄</div>
+                    <div className="font-bold text-lg mb-1">サシで話す</div>
+                    <div className="text-[10px] opacity-70">他のメンバーを退席させ入れ替える</div>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setSelectedSageForSummon(null)}
+                  className="mt-12 text-sm text-[#888] hover:text-[#333] border-b border-transparent hover:border-[#333] transition-colors"
+                >
+                  キャンセルして戻る
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       )}
@@ -649,27 +702,90 @@ export default function Home() {
             <div className="p-6 bg-white overflow-y-auto max-h-[60vh] text-sm text-[#555] leading-relaxed space-y-4">
               <h3 className="font-bold text-[#333] text-base mb-2">【THE CABINET は、あなたの秘密をサーバーに残しません】</h3>
               <p>当サービスは、ユーザーのプライバシーと対話の秘匿性を最優先に設計されています。</p>
-
               <div className="bg-[#f9fafb] p-4 rounded-lg space-y-2 border border-[#eee]">
                 <h4 className="font-bold text-[#333]">1. データはあなたの端末だけに</h4>
                 <p className="text-xs">過去の対話履歴や設定（生年月日など）は、すべてお客様ご自身のブラウザ内（ローカルストレージ）にのみ保存されます。運営側が管理するサーバーやデータベースに、個人の会話ログが永続的に保存・閲覧されることはありません。</p>
               </div>
-
               <div className="bg-[#f9fafb] p-4 rounded-lg space-y-2 border border-[#eee]">
                 <h4 className="font-bold text-[#333]">2. リセット権限はあなたに</h4>
                 <p className="text-xs">メニュー内の「記憶の消去 (Reset)」を実行、またはブラウザのキャッシュを削除することで、全てのデータは完全に消滅します。</p>
               </div>
-
               <div className="bg-[#f9fafb] p-4 rounded-lg space-y-2 border border-[#eee]">
                 <h4 className="font-bold text-[#333]">3. AI処理の安全性</h4>
                 <p className="text-xs">会話の生成には Google Gemini API を使用しています。入力されたデータは回答生成のために一時的に処理されますが、当サービスの運営者がその内容を傍受・監視することはありません。</p>
               </div>
-
               <p className="text-xs text-[#888] pt-2 text-center">安心してお使いいただける「完全なプライベート空間」を目指しています。</p>
             </div>
             <div className="p-4 border-t border-[#eee] bg-[#fafaf8] text-center">
               <button onClick={() => setShowPrivacyModal(false)} className="px-6 py-2 bg-[#333] text-white text-xs rounded-full hover:bg-[#555] transition-colors">
                 閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Manual */}
+      {showManualModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm font-sans" onClick={() => setShowManualModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-up" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-[#eee] bg-[#fafaf8] flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold text-[#333] font-[family-name:var(--font-cinzel)]">USER MANUAL</h2>
+                <p className="text-xs text-[#a38e5e] mt-1">THE CABINET 操作マニュアル</p>
+              </div>
+              <button onClick={() => setShowManualModal(false)} className="text-[#888] hover:text-[#333] text-2xl">×</button>
+            </div>
+            <div className="p-6 bg-white overflow-y-auto max-h-[70vh] text-sm text-[#444] leading-relaxed space-y-6">
+
+              <section>
+                <h3 className="font-bold text-[#333] text-base mb-3 flex items-center gap-2"><span className="text-[#a38e5e]">1.</span> はじめに</h3>
+                <p className="text-sm">「THE CABINET」へようこそ。<br />ここは単なるAIチャットではありません。歴史上の偉人、物語の登場人物、そして土地の守り神たち（賢人）が、あなたの思考を深め、人生の意思決定をサポートする「極秘のプライベートサロン」です。</p>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-[#333] text-base mb-3 flex items-center gap-2"><span className="text-[#a38e5e]">2.</span> 基本的な対話の進め方</h3>
+                <ul className="list-disc pl-5 space-y-2 text-sm">
+                  <li>画面下部の入力欄から、相談したいテーマや悩みを入力してください（Shift + Enterで改行）。</li>
+                  <li>賢人たちが、それぞれの強烈な個性と哲学に基づきアドバイスを行います。</li>
+                  <li><strong>優等生的な会話はありません。</strong> 賢人同士で意見が対立したり、あなたに厳しい問いかけ（「オーナー、あなたはどう思う？」）を投げかけてくることがあります。それに答える形で議論を深めてください。</li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-[#333] text-base mb-3 flex items-center gap-2"><span className="text-[#a38e5e]">3.</span> 賢人の招集について（重要）</h3>
+                <p className="text-sm mb-3">メニューの「📜 賢人一覧」から特定の人物をクリックすると、以下の2つの招集方法を選択できます。</p>
+                <div className="bg-[#f9fafb] p-4 rounded-lg border border-[#eee] space-y-3">
+                  <div>
+                    <span className="font-bold text-[#333]">➕ 追加招集：</span><br />
+                    <span className="text-xs">現在の議論メンバーはそのままに、その賢人を「アドバイザー」として途中参加させます。</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-[#333]">🔄 サシで話す：</span><br />
+                    <span className="text-xs">他のメンバーには全員退席してもらい、<strong>指名した賢人とあなただけの「1対1」の対話</strong>を開始します。深く語り合いたい時に最適です。</span>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-[#333] text-base mb-3 flex items-center gap-2"><span className="text-[#a38e5e]">4.</span> メニュー機能</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="flex gap-2"><span>⚡</span><span><strong>チーム生成:</strong> テーマ別に最適な3名を自動招集</span></div>
+                  <div className="flex gap-2"><span>🔄</span><span><strong>メンバー交代:</strong> 全く違う視点のメンバーに入れ替え</span></div>
+                  <div className="flex gap-2"><span>🧭</span><span><strong>Grand Compass:</strong> あなたの運命座標で再診断</span></div>
+                  <div className="flex gap-2"><span>🚪</span><span><strong>介入を呼び込む:</strong> 待機中の賢人がランダムに乱入</span></div>
+                  <div className="flex gap-2"><span>🗑️</span><span><strong>記憶の消去 (Reset):</strong> 対話履歴と設定を完全消去</span></div>
+                </div>
+              </section>
+
+              <p className="text-xs text-[#888] pt-4 text-center border-t border-[#eee]">
+                THE CABINET は、あなたの秘密をサーバーに残しません。<br />どうぞ、誰にも言えない本音で賢人たちと対話してください。
+              </p>
+
+            </div>
+            <div className="p-4 border-t border-[#eee] bg-[#fafaf8] text-center">
+              <button onClick={() => setShowManualModal(false)} className="px-8 py-3 bg-[#333] text-white text-sm font-bold rounded-full hover:bg-[#555] shadow-lg transition-all">
+                理解してサロンへ進む
               </button>
             </div>
           </div>
