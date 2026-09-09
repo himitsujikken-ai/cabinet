@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { AstroLogic } from "@/utils/astro";
 import { SAGE_DB, Sage } from "@/utils/sages";
@@ -276,7 +276,23 @@ ${waitingRoomText}
             }
         }
 
-        const chatModel = genAI.getGenerativeModel({ model: GEMINI_MODEL, generationConfig: { responseMimeType: "application/json" } });
+        const chatModel = genAI.getGenerativeModel({
+            model: GEMINI_MODEL,
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: SchemaType.ARRAY,
+                    items: {
+                        type: SchemaType.OBJECT,
+                        properties: {
+                            speaker: { type: SchemaType.STRING },
+                            content: { type: SchemaType.STRING }
+                        },
+                        required: ["speaker", "content"]
+                    }
+                }
+            }
+        });
         const chat = chatModel.startChat({ history: formattedHistory });
 
         const result = await chat.sendMessage(message + "\n\n" + directorsNote);
