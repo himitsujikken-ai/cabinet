@@ -1,7 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { AstroLogic } from "@/utils/astro";
 import { SAGE_DB, Sage } from "@/utils/sages";
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 const NAME_MAPPING: Record<string, string> = {
     "マインド・アルケミスト": "ポテンシャルジェネレーター",
@@ -76,7 +78,7 @@ export async function POST(req: Request) {
         const genAI = new GoogleGenerativeAI(apiKey);
 
         if (mode === "LEGACY") {
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", generationConfig: { responseMimeType: "application/json" } });
+            const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, generationConfig: { responseMimeType: "application/json" } });
             const result = await model.generateContent("...");
             return NextResponse.json({ reply: result.response.text(), mode: "LEGACY" });
         }
@@ -274,7 +276,23 @@ ${waitingRoomText}
             }
         }
 
-        const chatModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash", generationConfig: { responseMimeType: "application/json" } });
+        const chatModel = genAI.getGenerativeModel({
+            model: GEMINI_MODEL,
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: SchemaType.ARRAY,
+                    items: {
+                        type: SchemaType.OBJECT,
+                        properties: {
+                            speaker: { type: SchemaType.STRING },
+                            content: { type: SchemaType.STRING }
+                        },
+                        required: ["speaker", "content"]
+                    }
+                }
+            }
+        });
         const chat = chatModel.startChat({ history: formattedHistory });
 
         const result = await chat.sendMessage(message + "\n\n" + directorsNote);
